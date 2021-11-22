@@ -186,12 +186,10 @@
 #define dicthtLoadFactor(ht) (double) ht->used / ht->size
 #define dictIsRehashing(dc) dc->rehashidx != DICTHT_DEFAULT_REHASHING
 #define dictGetTimeDiff(start) (int)(clock() - start) / 1000
-#define dictSwapHt(dc) do {     \
-    dictht* ht0 = &dc->ht[0];   \
-    dictht* ht1 = &dc->ht[1];   \
-    dictht* tmp = ht0;          \
-    ht0 = ht1;                  \
-    ht1 = tmp;                  \
+#define dictSwapHt(dc) do {    \
+    dictht tmp = dc->ht[0];    \
+    dc->ht[0] = dc->ht[1];     \
+    dc->ht[1] = tmp;           \
 } while(0)
 
 dictType *newDictType(
@@ -232,6 +230,19 @@ static int resetDictht(dictht* ht, unsigned int size) {
     return DICT_OK;
 }
 
+static int dicthtRehashInsert(dictht *ht, dictType *type, dictEntry *entry) {
+    if (entry == NULL) return DICT_OK;
+    unsigned int idx = dicthtEntryKeyHash(ht, type, entry);
+    dictEntry *next;
+    while (entry != NULL) {
+        next = entry->next;
+        dicthtSet(ht, idx, entry);
+        entry = next;
+        dicthtIncrSize(ht);
+    }
+    return DICT_OK;
+}
+
 static int dicthtInsert(dictht *ht, dictType *type, dictEntry *entry) {
     unsigned int idx = dicthtEntryKeyHash(ht, type, entry);
     if (dicthtIsOccupied(ht, idx)) {
@@ -249,17 +260,15 @@ static int dicthtInsert(dictht *ht, dictType *type, dictEntry *entry) {
 
 static int rehashMillis(dict *dc, int millis) {
     clock_t start = clock();
-    dictht h0 = dc->ht[0];
-    dictht h1 = dc->ht[1];
+    dictht* h0 = &dc->ht[0];
+    dictht* h1 = &dc->ht[1];
     do {
-        dictEntry *entry = h0.table[dc->rehashidx];
-        while (entry) {
-            dicthtInsert(&h1, dc->type, entry);
-            entry = entry->next;
-        }
-    } while (dictGetTimeDiff(start) < millis && h1.used < h0.used);
+        dictEntry *entry = h0->table[dc->rehashidx];
+        dicthtRehashInsert(h1, dc->type, entry);
+        dc->rehashidx++;
+    } while (dictGetTimeDiff(start) < millis && h1->used < h0->used);
 
-    if (h0.used == h1.used) {
+    if (h0->used == h1->used) {
         dc->rehashidx = DICTHT_DEFAULT_REHASHING;
         dictSwapHt(dc);
     }
@@ -273,7 +282,6 @@ static int expandDictht(dict *dc) {
 }
 
 static int shrinkDictht(dict *dc) {
-//    if (!resetDictht(&dc->ht[1], dc->ht[0].size/2)) return DICT_ERR;
     resetDictht(&dc->ht[1], dc->ht[0].size/2);
     dc->rehashidx = 0;
     return rehashMillis(dc, DICTHT_DEFAULT_REHASHING_MILLIS);

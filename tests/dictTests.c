@@ -65,31 +65,50 @@ unsigned int dictGenHashFunction(const void *key, int len) {
     return (unsigned int) h;
 }
 
-int intDestructor(const void * key) {
-//    sds k = (sds) key;
-//    sdsfree(k);
+typedef struct IntEntry {
+    int val;
+} intentry;
+
+
+int destructor(const void * key) {
+    free((intentry*)key);
     return 0;
 }
 
-unsigned int hash(const void * key) {
-    return dictGenHashFunction(key, 5);
+unsigned int hash(const void *key) {
+    return dictGenHashFunction(key, sizeof(intentry));
 }
 
 int keyCompare(const void * key1, const void * key2) {
-    int *k1 = (int*) key1;
-    int *k2 = (int*) key2;
-    return *k1 - *k2;
+    intentry* k1 = (intentry*) key1;
+    intentry* k2 = (intentry*) key2;
+    return k1->val - k2->val;
+}
+
+void run() {
+    dictType* dtype = newDictType(hash, keyCompare, destructor, destructor);
+    dict *d = newDict(dtype);
+
+    int size = 58;
+    intentry** entries = malloc(sizeof(void*) * size);
+    for (int i = 0; i < size; i++) {
+        entries[i] = malloc(sizeof(intentry));
+        entries[i]->val = i;
+    }
+
+    clock_t start = clock();
+    for (int i = 0; i < size; i++) {
+        if (i == 44) {
+            // when i is 44 there is a cyclic loop in the entries
+            printf("");
+        }
+        dictInsert(d, entries[i], entries[i]);
+    }
+    int duration = (int)(clock() - start);
+    printf("duration: %d us", duration);
 }
 
 int main() {
-    dictType* dtype = newDictType(hash, keyCompare, intDestructor, intDestructor);
-    dict *d = newDict(dtype);
-
-    clock_t start_time = clock();
-    for (int i = 0; i < 10000; i++) {
-        dictInsert(d, (void *)&i, (void *)&i);
-    }
-    clock_t elapsed_time = clock() - start_time;
-    printf("Done in %ld us\n", elapsed_time);
+    run();
     return 0;
 }
