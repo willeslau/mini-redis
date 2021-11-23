@@ -17,8 +17,13 @@ add_executable(
         src/ziplist.h
         src/dict.c
         src/dict.h
+        src/redisdict.c
+        src/redisdict.h
+        src/zmalloc.c
+        src/zmalloc.h
         src/zskiplist.h
         src/zskiplist.c
         tests/ziplistTests.c
         tests/dictTests.c
+        tests/redisDictTests.c
 )

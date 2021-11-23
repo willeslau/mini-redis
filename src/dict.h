@@ -12,8 +12,6 @@
 #define DICT_OK  0
 #define DICT_ERR 1
 #define DICT_DEFAULT_LOAD_FACTOR 0.8
-#define DICT_REHASH_DONE 0
-#define DICT_REHASHING 1
 #define DICT_HASH_KEY(d, k) (d)->type->hashFunction(k)
 #define DICTHT_DEFAULT_INIT_SIZE 4
 

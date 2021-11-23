@@ -1,5 +1,4 @@
 
-#include <math.h>
 #include <stdio.h>
 #include <time.h>
 #include "../src/dict.h"
@@ -18,7 +17,7 @@ static uint32_t dict_hash_function_seed = 5381;
  * 2. It will not produce the same results on little-endian and big-endian
  *    machines.
  */
-unsigned int dictGenHashFunction(const void *key, int len) {
+unsigned int dictGenHashFn(const void *key, int len) {
     /* 'm' and 'r' are mixing constants generated offline.
      They're not really 'magic', they just happen to work well.  */
     uint32_t seed = dict_hash_function_seed;
@@ -76,7 +75,7 @@ int destructor(const void * key) {
 }
 
 unsigned int hash(const void *key) {
-    return dictGenHashFunction(key, sizeof(intentry));
+    return dictGenHashFn(key, sizeof(intentry));
 }
 
 int keyCompare(const void * key1, const void * key2) {
@@ -89,7 +88,7 @@ void run() {
     dictType* dtype = newDictType(hash, keyCompare, destructor, destructor);
     dict *d = newDict(dtype);
 
-    int size = 58;
+    int size = 1000000;
     intentry** entries = malloc(sizeof(void*) * size);
     for (int i = 0; i < size; i++) {
         entries[i] = malloc(sizeof(intentry));
@@ -98,14 +97,10 @@ void run() {
 
     clock_t start = clock();
     for (int i = 0; i < size; i++) {
-        if (i == 44) {
-            // when i is 44 there is a cyclic loop in the entries
-            printf("");
-        }
         dictInsert(d, entries[i], entries[i]);
     }
-    int duration = (int)(clock() - start);
-    printf("duration: %d us", duration);
+    double duration = 1000000 * (double)(clock() - start) / CLOCKS_PER_SEC / size;
+    printf("duration: %f us", duration);
 }
 
 int main() {
