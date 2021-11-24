@@ -26,4 +26,4 @@ add_executable(
         tests/ziplistTests.c
         tests/dictTests.c
         tests/redisDictTests.c
-)
+        src/redis.h src/db.c)

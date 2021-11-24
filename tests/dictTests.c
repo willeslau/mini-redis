@@ -70,7 +70,7 @@ typedef struct IntEntry {
 
 
 int destructor(const void * key) {
-    free((intentry*)key);
+//    free((intentry*)key);
     return 0;
 }
 
@@ -98,7 +98,22 @@ void run() {
     clock_t start = clock();
     for (int i = 0; i < size; i++) {
         dictInsert(d, entries[i], entries[i]);
+        dictEntry *entry = dictFind(d, entries[i]);
+        if (entry == NULL) {
+            printf("cannot find entry %d", i);
+            exit(1);
+        }
     }
+
+    for (int i = 0; i < size; i++) {
+        dictDelete(d, entries[i]);
+        dictEntry *entry = dictFind(d, entries[i]);
+        if (entry != NULL) {
+            printf("find entry %d after delete", i);
+            exit(1);
+        }
+    }
+
     double duration = 1000000 * (double)(clock() - start) / CLOCKS_PER_SEC / size;
     printf("duration: %f us", duration);
 }

@@ -378,7 +378,7 @@ int dictReplace(dict *d, void *key, void *val)
     if (dictAdd(d, key, val) == DICT_OK)
         return 1;
     /* It already exists, get the entry */
-    entry = dictFind(d, key);
+    entry = dictFindEntry(d, key);
     /* Set the new value and free the old one. Note that it is important
      * to do that in this order, as the value may just be exactly the same
      * as the previous one. In this context, think to reference counting,
@@ -397,7 +397,7 @@ int dictReplace(dict *d, void *key, void *val)
  *
  * See dictAddRaw() for more information. */
 dictEntry *dictReplaceRaw(dict *d, void *key) {
-    dictEntry *entry = dictFind(d,key);
+    dictEntry *entry = dictFindEntry(d, key);
 
     return entry ? entry : dictAddRaw(d,key);
 }
@@ -440,7 +440,7 @@ static int dictGenericDelete(dict *d, const void *key, int nofree)
     return DICT_ERR; /* not found */
 }
 
-int dictDelete(dict *ht, const void *key) {
+int dictDeleteKey(dict *ht, const void *key) {
     return dictGenericDelete(ht,key,0);
 }
 
@@ -483,7 +483,7 @@ void dictRelease(dict *d)
     zfree(d);
 }
 
-dictEntry *dictFind(dict *d, const void *key)
+dictEntry *dictFindEntry(dict *d, const void *key)
 {
     dictEntry *he;
     unsigned int h, idx, table;
@@ -504,10 +504,10 @@ dictEntry *dictFind(dict *d, const void *key)
     return NULL;
 }
 
-void *dictFetchValue(dict *d, const void *key) {
+void *dictFetchVal(dict *d, const void *key) {
     dictEntry *he;
 
-    he = dictFind(d,key);
+    he = dictFindEntry(d, key);
     return he ? dictGetVal(he) : NULL;
 }
 

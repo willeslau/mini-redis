@@ -5,7 +5,14 @@
 #define DICTHT_DEFAULT_REHASHING_LOOPS 5
 #define DICTHT_LOADFACTOR_LO 0.3
 #define DICTHT_LOADFACTOR_HI 5
+#define dictFreeKey(d, entry) \
+    if ((d)->type->keyDestructor) \
+        (d)->type->keyDestructor((entry)->k)
+#define dictFreeVal(d, entry) \
+    if ((d)->type->valDestructor) \
+        (d)->type->valDestructor((entry)->v.val)
 #define dicthtEntryKeyIndex(ht, type, k) type->hashFunction(k) & ht->sizemask
+#define dicthtEntryKeyHash(type, k) type->hashFunction(k)
 #define dicthtIsOccupied(ht, idx) ht->table[idx] != NULL
 #define dicthtGet(ht, idx) ht->table[idx]
 #define dicthtSet(ht, idx, entry) do {    \
@@ -14,7 +21,7 @@
 } while(0)
 #define dicthtIncrSize(ht) ht->used++
 #define dicthtLoadFactor(ht) ht.used / ht.size
-#define dictIsRehashing(dc) dc->rehashidx != DICTHT_DEFAULT_REHASHING
+#define dictIsRehashing(dc) (dc->rehashidx != DICTHT_DEFAULT_REHASHING)
 #define dicthtReset(ht) do {    \
     ht->used = 0;               \
     ht->size = 0;               \
@@ -141,6 +148,77 @@ int dictInsert(dict *dc, void *key, void *val) {
      * and hence @1 is wasting time in malloc unnecessary spaces.
      */
     dictEntry *entry = dicthtInsert(ht, dc->type, key);
+
     if (entry != NULL) entry->v.val = val;
     return DICT_OK;
+}
+
+dictEntry *dicthtFind(dictht *ht, dictType *type, void *key) {
+    unsigned int idx = dicthtEntryKeyIndex(ht, type, key);
+    if (dicthtIsOccupied(ht, idx)) {
+        dictEntry *next = dicthtGet(ht, idx);
+        while (next != NULL) {
+            if (type->keyCompare(next->k, key))
+                return next;
+            next = next->next;
+        }
+    }
+    return NULL;
+}
+
+dictEntry *dictFind(dict *dc, const void *key) {
+    if (dictIsRehashing(dc)) rehashLoops(dc, DICTHT_DEFAULT_REHASHING_LOOPS);
+
+    unsigned int h = dicthtEntryKeyHash(dc->type, key), idx;
+    for (int i = 0; i <= 1; i++) {
+        idx = h & dc->ht[i].sizemask;
+        dictEntry *next = dc->ht[i].table[idx];
+        while (next != NULL) {
+            if (dc->type->keyCompare(next->k, key))
+                return next;
+            next = next->next;
+        }
+        if (!dictIsRehashing(dc)) return NULL;
+    }
+    return NULL;
+}
+
+void *dictFetchValue(dict *dc, const void *key) {
+    dictEntry *en = dictFind(dc, key);
+    return en ? en->v.val : NULL;
+}
+
+static int dictGenericDelete(dict *dc, const void *key, int nofree) {
+    if (dictIsRehashing(dc)) rehashLoops(dc, DICTHT_DEFAULT_REHASHING_LOOPS);
+
+    unsigned int h = dicthtEntryKeyHash(dc->type, key), idx;
+    for (int i = 0; i <= 1; i++) {
+        idx = h & dc->ht[i].sizemask;
+        dictEntry *en = dc->ht[i].table[idx], *prev = NULL;
+        while (en != NULL) {
+            if (dc->type->keyCompare(en->k, key)) {
+                if (prev != NULL) prev->next = en;
+                else
+                    dc->ht[i].table[idx] = en->next;
+
+                if (!nofree) {
+                    dictFreeKey(dc, en);
+                    dictFreeVal(dc, en);
+                }
+
+                free(en);
+                dc->ht[i].used--;
+                return DICT_OK;
+            }
+            prev = en;
+            en = en->next;
+        }
+        if (!dictIsRehashing(dc)) return DICT_OK;
+    }
+    return DICT_ERR; /* not found */
+}
+
+/* NOTE: seems like redis does not have shrinking the table? */
+int dictDelete(dict *dc, void *key) {
+    return dictGenericDelete(dc, key, 0);
 }

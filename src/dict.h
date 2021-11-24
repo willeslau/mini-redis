@@ -57,5 +57,6 @@ dictType *newDictType(
 
 dict *newDict(dictType *type);
 int dictInsert(dict *dc, void *key, void *val);
-int dictFind(dict *dc, void *key);
+dictEntry *dictFind(dict *dc, const void *key);
+void *dictFetchValue(dict *dc, const void *key);
 int dictDelete(dict *dc, void *key);
