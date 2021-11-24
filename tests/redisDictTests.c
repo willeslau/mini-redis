@@ -21,7 +21,7 @@
 //int keyCompare(void *privdata, const void * key1, const void * key2) {
 //    intentry* k1 = (intentry*) key1;
 //    intentry* k2 = (intentry*) key2;
-//    return k1->val - k2->val;
+//    return k1->val == k2->val;
 //}
 //
 //void run() {

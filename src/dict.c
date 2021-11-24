@@ -2,9 +2,9 @@
 
 #define DICTHT_DEFAULT_SIZE 16
 #define DICTHT_DEFAULT_REHASHING -1
-#define DICTHT_DEFAULT_REHASHING_LOOPS 1
+#define DICTHT_DEFAULT_REHASHING_LOOPS 5
 #define DICTHT_LOADFACTOR_LO 0.3
-#define DICTHT_LOADFACTOR_HI 2
+#define DICTHT_LOADFACTOR_HI 5
 #define dicthtEntryKeyIndex(ht, type, k) type->hashFunction(k) & ht->sizemask
 #define dicthtIsOccupied(ht, idx) ht->table[idx] != NULL
 #define dicthtGet(ht, idx) ht->table[idx]
@@ -13,15 +13,8 @@
     ht->table[idx] = entry;               \
 } while(0)
 #define dicthtIncrSize(ht) ht->used++
-#define dicthtLoadFactor(ht) (double) ht->used / ht->size
-#define dictEntryKeyHash(dc, entry) dc->type->hashFunction(entry->k)
+#define dicthtLoadFactor(ht) ht.used / ht.size
 #define dictIsRehashing(dc) dc->rehashidx != DICTHT_DEFAULT_REHASHING
-#define dictGetTimeDiff(start) (clock() - start)
-#define dictSwapHt(dc) do {     \
-    dictht tmp = dc->ht[0];     \
-    dc->ht[0] = dc->ht[1];      \
-    dc->ht[1] = tmp;            \
-} while(0)
 #define dicthtReset(ht) do {    \
     ht->used = 0;               \
     ht->size = 0;               \
@@ -43,15 +36,6 @@ dictType *newDictType(
     return dtype;
 }
 
-
-dictEntry *newDictEntry(void *key, void *val) {
-    dictEntry *e = malloc(sizeof(*e));
-//    if (e == NULL) return NULL;
-    e->k = key;
-    e->v.val = val;
-    return e;
-}
-
 static unsigned int normalizePower(unsigned int n) {
     unsigned int s = 1;
     while (s < n) s *= 2;
@@ -71,7 +55,7 @@ static dictEntry* dicthtInsert(dictht *ht, dictType *type, void *key) {
     if (dicthtIsOccupied(ht, idx)) {
         dictEntry *next = dicthtGet(ht, idx);
         while (next != NULL) {
-            if (type->keyCompare(next->k, key) == 0)
+            if (type->keyCompare(next->k, key))
                 return NULL;
             next = next->next;
         }
@@ -83,7 +67,7 @@ static dictEntry* dicthtInsert(dictht *ht, dictType *type, void *key) {
     return e;
 }
 
-static int rehashLoops(dict *dc, int n) {
+static void rehashLoops(dict *dc, int n) {
     // NOTE: redis is so particular that the empty loops is limited
     int empty_visits = n*10; /* Max number of empty buckets to visit. */
 
@@ -95,7 +79,7 @@ static int rehashLoops(dict *dc, int n) {
         /* skip if table does not have anything at index */
         while (h0->table[dc->rehashidx] == NULL) {
             dc->rehashidx++;
-            if (--empty_visits == 0) return DICT_OK;
+            if (--empty_visits == 0) return;
         }
 
         en = dc->ht[0].table[dc->rehashidx];
@@ -116,28 +100,23 @@ static int rehashLoops(dict *dc, int n) {
         dc->ht[0] = dc->ht[1];
         dicthtReset(h1);
     }
-    return DICT_OK;
 }
 
-static int resizeDictht(dict *dc, unsigned int size) {
+static void resizeDictht(dict *dc, unsigned int size) {
     initDictht(&dc->ht[1], size);
     dc->rehashidx = 0;
     return rehashLoops(dc, DICTHT_DEFAULT_REHASHING_LOOPS);
 }
 
-static int resizeIfNeeded(dict *dc) {
-    if (dictIsRehashing(dc)) return DICT_OK;
-
-    dictht *ht= &dc->ht[0];
-    double lf = dicthtLoadFactor(ht);
-    if (lf > DICTHT_LOADFACTOR_HI) return resizeDictht(dc, dc->ht[0].used*2);
-//    if (lf < DICTHT_LOADFACTOR_LO) return shrinkDictht(dc);
-    return DICT_OK;
+static void resizeIfNeeded(dict *dc) {
+    if (dictIsRehashing(dc)) return;
+    if (dicthtLoadFactor(dc->ht[0]) > DICTHT_LOADFACTOR_HI)
+        return resizeDictht(dc, dc->ht[0].used*2);
 }
 
 dict *newDict(dictType *type) {
     dict *d = malloc(sizeof(*d));
-//    if (d == NULL) return NULL;
+    if (d == NULL) return NULL;
 
     d->type = type;
     d->rehashidx = DICTHT_DEFAULT_REHASHING;
@@ -145,22 +124,23 @@ dict *newDict(dictType *type) {
     return d;
 }
 
-//int dictInsert(dict *dc, void *key, void *val) {
-//    dictEntry *entry = newDictEntry(key, val);   <---- This is wasting time as not every key needs malloc
-//    if (dictIsRehashing(dc)) rehashLoops(dc, DICTHT_DEFAULT_REHASHING_LOOPS);
-//
-//    resizeIfNeeded(dc);
-//    if (dictIsRehashing(dc)) dicthtInsert(&dc->ht[1], dc->type, entry);
-//    else dicthtInsert(&dc->ht[0], dc->type, entry);
-//    return DICT_OK;
-//}
-
 int dictInsert(dict *dc, void *key, void *val) {
     if (dictIsRehashing(dc)) rehashLoops(dc, DICTHT_DEFAULT_REHASHING_LOOPS);
 
     resizeIfNeeded(dc);
     dictht *ht = dictIsRehashing(dc) ? &dc->ht[1] : &dc->ht[0];
-    dictEntry *entry = dicthtInsert(ht, dc->type, key);;
+
+    /* Note:
+     * You have to admit that Redis is really particular about performance.
+     * My original implementation is:
+     *      dictEntry *entry = newDictEntry(key, val);  @1
+     *      if (dictIsRehashing(dc)) rehashLoops(dc, DICTHT_DEFAULT_REHASHING_LOOPS);
+     *      ...  // other code
+     * But Redis's implementation is actually using only the key for insertion.
+     * My original implementation is slower because not all key will be inserted
+     * and hence @1 is wasting time in malloc unnecessary spaces.
+     */
+    dictEntry *entry = dicthtInsert(ht, dc->type, key);
     if (entry != NULL) entry->v.val = val;
     return DICT_OK;
 }
